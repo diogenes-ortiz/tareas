@@ -162,6 +162,8 @@ button{font-family:inherit}
 .tab-btn:not(.active){background:var(--surface);color:var(--sub)}
 
 .hidden{display:none!important}
+.link-item{transition:background .1s}
+.link-item:hover{background:var(--col-hover)!important}
 </style>
 </head>
 <body>
@@ -287,6 +289,7 @@ function renderTaskCard(t,isClient=false){
       as?avatar(as.name,as.color,20):"",
       t.dueDate?h("span",{style:{color:od?"#DC2626":"var(--muted)",fontWeight:od?"700":"500"}},fmtD(t.dueDate)):"",
       (t.comments?.length)?h("span",{},"💬 "+t.comments.length):"",
+      (t.links?.length)?h("span",{},"🔗 "+t.links.length):"",
       h("span",{style:{marginLeft:"auto"}},tAgo(t.createdAt))
     ])
   ]);
@@ -450,6 +453,18 @@ function renderTaskForm(isClient=false){
           h("div",{},[h("label",{class:"lbl"},"Fecha límite"),h("input",{class:"inp",id:"tf_due",type:"date",value:f.dueDate||""})]),
           isE?h("div",{},[h("label",{class:"lbl"},"Estado"),h("select",{class:"inp",id:"tf_status"},STS.map(s=>h("option",{value:s.id,selected:s.id===f.status},s.icon+" "+s.label)).join(""))]):"",
         ]):"",
+        // Links section
+        h("div",{},[
+          h("label",{class:"lbl"},"🔗 Links / Archivos"),
+          h("div",{id:"tf_links_list",style:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"8px"}},
+            (f.links||[]).map((lnk,i)=>h("div",{style:{display:"flex",gap:"6px",alignItems:"center"}},[
+              h("input",{class:"inp tf-link-url",value:lnk.url,placeholder:"https://...",style:{flex:"1",fontSize:"12px"}}),
+              h("input",{class:"inp tf-link-label",value:lnk.label||"",placeholder:"Nombre (opcional)",style:{width:"140px",fontSize:"12px"}}),
+              h("button",{onclick:`removeLink(${i})`,style:{background:"none",border:"none",cursor:"pointer",color:"#EF4444",fontSize:"14px",padding:"4px"}},"✕")
+            ])).join("")
+          ),
+          h("button",{onclick:"addLinkField()",style:{display:"flex",alignItems:"center",gap:"6px",padding:"7px 14px",borderRadius:"8px",border:"1px dashed var(--border)",background:"transparent",color:"var(--accent)",fontSize:"11px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}},"➕ Agregar link")
+        ]),
       ]),
       h("div",{style:{display:"flex",gap:"10px",marginTop:"26px",justifyContent:"flex-end"}},[
         isE&&!isClient?h("button",{class:"btn btn-danger",onclick:`deleteTask('${t.id}');setState({showForm:false})`},"🗑 Eliminar"):"",
@@ -471,10 +486,15 @@ function submitTaskForm(isClient,isEdit){
   const assignee=isClient?"":(document.getElementById("tf_assignee")?.value||"");
   const due=isClient?"":(document.getElementById("tf_due")?.value||"");
   const status=isEdit?(document.getElementById("tf_status")?.value||"pendiente"):"pendiente";
+  // Collect links
+  const linkUrls=document.querySelectorAll(".tf-link-url");
+  const linkLabels=document.querySelectorAll(".tf-link-label");
+  const links=[];
+  linkUrls.forEach((inp,i)=>{const url=inp.value.trim();if(url)links.push({url,label:linkLabels[i]?.value?.trim()||""});});
   const old=isEdit?state.selectedTask:{};
   const task={
     ...(old||{}),title,description:desc,priority:prio,category:cat,
-    assigneeId:assignee,clientId:client,dueDate:due,status,
+    assigneeId:assignee,clientId:client,dueDate:due,status,links,
     id:old?.id||uid(),
     createdAt:old?.createdAt||new Date().toISOString(),
     updatedAt:new Date().toISOString(),
@@ -483,6 +503,22 @@ function submitTaskForm(isClient,isEdit){
   };
   saveTask(task);
   setState({showForm:false,selectedTask:null});
+}
+
+// Link field helpers
+function addLinkField(){
+  const list=document.getElementById("tf_links_list");if(!list)return;
+  const row=document.createElement("div");
+  row.style.cssText="display:flex;gap:6px;align-items:center";
+  row.innerHTML='<input class="inp tf-link-url" placeholder="https://..." style="flex:1;font-size:12px"><input class="inp tf-link-label" placeholder="Nombre (opcional)" style="width:140px;font-size:12px"><button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:#EF4444;font-size:14px;padding:4px">✕</button>';
+  list.appendChild(row);
+}
+function removeLink(idx){
+  // Re-render form with link removed
+  const t=state.selectedTask||{links:[]};
+  const links=[...(t.links||[])];links.splice(idx,1);
+  if(state.selectedTask)state.selectedTask.links=links;
+  render();
 }
 
 function renderTaskDetail(){
@@ -514,6 +550,17 @@ function renderTaskDetail(){
         h("div",{},"Creada "+tAgo(t.createdAt))
       ]),
       // Move buttons (agency only)
+      // Links section
+      (t.links?.length)?h("div",{style:{marginBottom:"20px"}},[
+        h("div",{style:{fontSize:"11px",fontWeight:"700",color:"var(--muted)",marginBottom:"8px",textTransform:"uppercase"}},"🔗 Links ("+t.links.length+")"),
+        h("div",{style:{display:"flex",flexDirection:"column",gap:"6px"}},
+          t.links.map(lnk=>h("a",{href:lnk.url,target:"_blank",rel:"noopener",style:{display:"flex",alignItems:"center",gap:"8px",padding:"8px 12px",background:"var(--surface)",borderRadius:"8px",color:"var(--accent)",fontSize:"12px",fontWeight:"600",textDecoration:"none",border:"1px solid var(--border)",transition:"background .1s"},onmouseenter:"this.style.background='var(--col-hover)'",onmouseleave:"this.style.background='var(--surface)'"},[
+            "🔗",
+            h("span",{style:{flex:"1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},lnk.label||lnk.url),
+            h("span",{style:{fontSize:"10px",color:"var(--muted)",flexShrink:"0"}},"↗")
+          ])).join("")
+        )
+      ]):"",
       !isClient?h("div",{style:{marginBottom:"20px"}},[
         h("div",{style:{fontSize:"11px",fontWeight:"700",color:"var(--muted)",marginBottom:"8px",textTransform:"uppercase"}},"Mover a"),
         h("div",{style:{display:"flex",gap:"5px",flexWrap:"wrap"}},STS.filter(s=>s.id!==t.status).map(s=>h("button",{class:"move-btn",onclick:`moveTask('${t.id}','${s.id}');setState({selectedTask:state.tasks.find(x=>x.id==='${t.id}')})`,style:{background:s.color+"0A",color:s.color,border:"1px solid "+s.color+"33"}},s.icon+" "+s.label)).join(""))
